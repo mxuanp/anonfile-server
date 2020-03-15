@@ -1,0 +1,5 @@
+{
+	"version":"v2",
+	"info_url":"https://api.anonfile.com/%s/file/%s/info",
+	"upload_url":"https://api.anonfile.com/upload"
+}
