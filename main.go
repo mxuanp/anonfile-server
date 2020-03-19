@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -64,10 +65,9 @@ func main() {
 
 	//上传文件, 或创建文件夹
 	router.POST("/api/file/new", func(c *gin.Context) {
-		flag = c.PostForm("flag")
+		flag := c.PostForm("flag")
 		parent := c.PostForm("parent")
 		form, _ := c.MultipartForm()
-		files := form.File["files"]
 
 		if !CheckParent(parent) {
 			c.JSON(200, gin.H{
@@ -78,7 +78,7 @@ func main() {
 		}
 
 		if flag == "directory" {
-			dirName = c.PostForm("dirName")
+			dirName := c.PostForm("dirName")
 			if CheckFile(dirName, parent) {
 				c.JSON(200, gin.H{
 					"status":  "3003",
@@ -98,6 +98,8 @@ func main() {
 
 			return
 		}
+
+		files := form.File["files"]
 
 		//开启事务, 有上传失败，放弃所有上传文件，返回结果
 		tx := db.Begin()
@@ -158,17 +160,14 @@ func main() {
 	router.GET("/api/file/info/*fileName", func(c *gin.Context) {
 		file := c.Param("fileName")
 
-		//对路径的检查到此，以后逐渐增加其它的路径合法性检查，比如，路径像这样的 adb/adv是不合法的
+		//对路径的检查到此，以后逐渐增加其它的路径合法性检查
 
-		files, isFile := GetFiles(file)
+		files := GetFiles(file)
 
 		c.JSON(200, gin.H{
 			"status":  "2002",
 			"message": "get successed",
-			"data": {
-				"files":  files,
-				"isFile": isFile,
-			},
+			"data":    files,
 		})
 	})
 
@@ -238,7 +237,7 @@ func main() {
 }
 
 //GetFiles 查询当前文件夹下所有文件，parent为当前文件夹名
-func GetFiles(name string) (files []model.File, isFile bool) {
+func GetFiles(name string) (files []model.File) {
 	parent := "NULL"
 	filename := name
 	if name != "/" {
@@ -248,17 +247,15 @@ func GetFiles(name string) (files []model.File, isFile bool) {
 	}
 
 	var file model.File
-	db.Where("parent = ? and name = ", parent, filename).First(&file)
+	db.Where("parent = ? and name = ?", parent, filename).First(&file)
 
 	if file.Category == "file" {
 		files = append(files, file)
-		isFile = true
 		return
 	}
 
 	db.Where("parent = ?", name).Find(&files)
 	sort.Sort(model.FileSlice(files))
-	isFile = false
 	return
 }
 
@@ -266,9 +263,8 @@ func CheckParent(parent string) bool {
 	if parent == "/" {
 		return true
 	}
-	var count int
 	paths := strings.Split(parent, "/")
-	return CheckFile(paths[len(paths)-1], strings.Join(paths[:len(paths)-1], "/"))
+	return CheckFile(paths[len(paths)-1], "/"+strings.Join(paths[1:len(paths)-1], "/"))
 }
 
 //CheckFile 检查文件是否已存在
