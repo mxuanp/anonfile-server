@@ -19,8 +19,8 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 
-	"github.com/mxuanp/anonfile-go-server/model"
-	"github.com/mxuanp/anonfile-go-server/utils"
+	"github.com/mxuanp/anonfile-server/model"
+	"github.com/mxuanp/anonfile-server/utils"
 )
 
 var (
@@ -92,8 +92,7 @@ func main() {
 
 			c.JSON(200, gin.H{
 				"status":  "2002",
-				"message": "create successed",
-				"data":    file,
+				"message": "mkdir successed",
 			})
 
 			return
@@ -203,7 +202,7 @@ func main() {
 		c.JSON(200, gin.H{
 			"status":  "2002",
 			"message": "update successed",
-			"data":    file,
+			"data":    []model.File{file},
 		})
 	})
 

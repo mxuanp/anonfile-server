@@ -1,4 +1,4 @@
-module github.com/mxuanp/anonfile-go-server
+module github.com/mxuanp/anonfile-server
 
 go 1.13
 

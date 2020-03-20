@@ -2,7 +2,7 @@ package anonfile_test
 
 import(
 	"testing"
-	"github.com/mxuanp/anonfile-go-server/utils"
+	"github.com/mxuanp/anonfile-server/utils"
 )
 
 func TestRandString(t *testing.T){
