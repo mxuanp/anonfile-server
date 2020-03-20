@@ -170,6 +170,38 @@ func main() {
 		})
 	})
 
+	//检查是否存在dir
+	router.GET("/api/file/exist/*fileName", func(c *gin.Context) {
+		fileName := c.Param("fileName")
+		fmt.Println("filename:"+fileName)
+		parent := ""
+		name := fileName
+		if fileName != "/" {
+			paths := strings.Split(fileName, "/")
+			parent = strings.Join(paths[:len(paths)-1], "/")
+			if parent == ""{
+				parent = "/"
+			}
+			name = paths[len(paths)-1]
+		}
+
+		var file model.File
+		var message string = "false"
+		var count int
+
+		db.Where("parent = ? and name = ?", parent, name).First(&model.File{}).Count(&count)
+		if count != 0 {
+			message = "true"
+			db.Where("parent = ? and name = ?", parent, name).First(&file)
+		}
+
+		c.JSON(200, gin.H{
+			"status":  "2002",
+			"message": message,
+			"data":    []model.File{file},
+		})
+	})
+
 	//更新文件信息
 	router.PUT("/api/file/update", func(c *gin.Context) {
 		fileName := c.PostForm("fileName")
@@ -237,7 +269,7 @@ func main() {
 
 //GetFiles 查询当前文件夹下所有文件，parent为当前文件夹名
 func GetFiles(name string) (files []model.File) {
-	parent := "NULL"
+	parent := ""
 	filename := name
 	if name != "/" {
 		paths := strings.Split(name, "/")
