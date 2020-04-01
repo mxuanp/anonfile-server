@@ -7,6 +7,7 @@ import(
 type File struct {
 	gorm.Model
 	Name string
+	Fullname string
 	Size string
 	Category string
 	Parent string //使用树级目录设计

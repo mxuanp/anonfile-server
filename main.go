@@ -54,11 +54,10 @@ func main() {
 	defer db.Close()
 
 	db.AutoMigrate(&model.File{})
+
 	//check root dir
-	var count int
-	db.Where("name = ?", "/").First(&model.File{}).Count(&count)
-	if count == 0 {
-		db.Create(&model.File{Name: "/", Size: "4KB", Category: "directory", Parent: "", Url: ""})
+	if !CheckFile("/") {
+		db.Create(&model.File{Name: "/", Fullname: "/", Size: "4KB", Category: "directory", Parent: "", Url: ""})
 	}
 
 	router := gin.Default()
@@ -69,7 +68,7 @@ func main() {
 		parent := c.PostForm("parent")
 		form, _ := c.MultipartForm()
 
-		if !CheckParent(parent) {
+		if !CheckFile(parent) {
 			c.JSON(200, gin.H{
 				"status":  "3003",
 				"message": "parent dir is not exist",
@@ -77,9 +76,14 @@ func main() {
 			return
 		}
 
+		_parent := parent
+		if _parent == "/" {
+			_parent = ""
+		}
+
 		if flag == "directory" {
 			dirName := c.PostForm("dirName")
-			if CheckFile(dirName, parent) {
+			if CheckFile(_parent + "/" + dirName) {
 				c.JSON(200, gin.H{
 					"status":  "3003",
 					"message": "dir is exist",
@@ -87,8 +91,8 @@ func main() {
 				return
 			}
 
-			file := model.File{Name: dirName, Size: "4KB", Category: "directory", Parent: parent, Url: ""}
-			db.Create(&file)
+			dir := model.File{Name: dirName, Fullname: _parent + "/" + dirName, Size: "4KB", Category: "directory", Parent: parent, Url: ""}
+			db.Create(&dir)
 
 			c.JSON(200, gin.H{
 				"status":  "2002",
@@ -104,7 +108,7 @@ func main() {
 		tx := db.Begin()
 
 		for _, file := range files {
-			if CheckFile(file.Filename, parent) {
+			if CheckFile(_parent + "/" + file.Filename) {
 				file.Filename = utils.RandString(4) + "_" + file.Filename
 			}
 
@@ -132,7 +136,7 @@ func main() {
 
 			if resp.StatusCode == http.StatusOK {
 				info := utils.ParseSuccessRes(body)
-				tx.Create(&model.File{Name: file.Filename, Size: info.Data.File.Metadata.Size.Readable, Category: "file", Parent: parent, Url: info.Data.File.Url.Full})
+				tx.Create(&model.File{Name: file.Filename, Fullname: _parent + "/" + file.Filename, Size: info.Data.File.Metadata.Size.Readable, Category: "file", Parent: parent, Url: info.Data.File.Url.Full})
 
 			} else {
 				tx.Rollback()
@@ -173,32 +177,16 @@ func main() {
 	//检查是否存在dir
 	router.GET("/api/file/exist/*fileName", func(c *gin.Context) {
 		fileName := c.Param("fileName")
-		fmt.Println("filename:"+fileName)
-		parent := ""
-		name := fileName
-		if fileName != "/" {
-			paths := strings.Split(fileName, "/")
-			parent = strings.Join(paths[:len(paths)-1], "/")
-			if parent == ""{
-				parent = "/"
-			}
-			name = paths[len(paths)-1]
-		}
 
-		var file model.File
-		var message string = "false"
-		var count int
+		message := "false"
 
-		db.Where("parent = ? and name = ?", parent, name).First(&model.File{}).Count(&count)
-		if count != 0 {
+		if CheckFile(fileName) {
 			message = "true"
-			db.Where("parent = ? and name = ?", parent, name).First(&file)
 		}
 
 		c.JSON(200, gin.H{
 			"status":  "2002",
 			"message": message,
-			"data":    []model.File{file},
 		})
 	})
 
@@ -217,7 +205,7 @@ func main() {
 		file := model.File{Model: gorm.Model{ID: uint(id)}}
 		db.First(&file)
 
-		if CheckFile(fileName, file.Parent) {
+		if CheckFile(fileName) {
 			c.JSON(200, gin.H{
 				"status":  "3004",
 				"message": "name was exist",
@@ -226,9 +214,12 @@ func main() {
 		}
 
 		if file.Category == "directory" { //要修改的file是文件夹类型，需要同时修改该目录下所有文件的父级目录 parent
-			db.Model(model.File{}).Where("parent = ?", file.Parent+"/"+file.Name).Updates(model.File{Parent: file.Parent + "/" + fileName})
+			db.Model(model.File{}).Where("parent = ?", file.Fullname).Updates(model.File{Parent: fileName})
 		}
-		file.Name = fileName
+
+		file.Fullname = fileName
+		temp := strings.Split(fileName, "/")
+		file.Name = temp[len(temp)-1]
 		db.Save(&file)
 
 		c.JSON(200, gin.H{
@@ -240,15 +231,13 @@ func main() {
 
 	//删除文件或文件夹
 	router.DELETE("/api/file/*fileName", func(c *gin.Context) {
-		path := strings.Split(c.Param("fileName"), "/")
-		fileName := path[len(path)-1]
-		parent := strings.Join(path[:len(path)-1], "/")
+		fileName := c.Param("fileName")
 
 		var file model.File
-		db.Where("parent = ? and name = ?", parent, fileName).First(&file)
+		db.Where("fullname = ?", fileName).First(&file)
 
 		if file.Category == "directory" {
-			db.Unscoped().Where("parent = ?", path).Delete(model.File{})
+			db.Unscoped().Where("parent = ?", file.Fullname).Delete(model.File{})
 		}
 
 		db.Unscoped().Delete(&file) //gorm.Model定义了deleted_at, 直接Delete会进行软删除，使用Unscoped设置直接删除记录
@@ -268,40 +257,24 @@ func main() {
 }
 
 //GetFiles 查询当前文件夹下所有文件，parent为当前文件夹名
-func GetFiles(name string) (files []model.File) {
-	parent := ""
-	filename := name
-	if name != "/" {
-		paths := strings.Split(name, "/")
-		filename = paths[len(paths)-1]
-		parent = strings.Join(paths[:len(paths)-1], "/")
-	}
-
+func GetFiles(fileName string) (files []model.File) {
 	var file model.File
-	db.Where("parent = ? and name = ?", parent, filename).First(&file)
+	db.Where("fullname = ?", fileName).First(&file)
 
 	if file.Category == "file" {
 		files = append(files, file)
 		return
 	}
 
-	db.Where("parent = ?", name).Find(&files)
+	db.Where("parent = ?", fileName).Find(&files)
 	sort.Sort(model.FileSlice(files))
 	return
 }
 
-func CheckParent(parent string) bool {
-	if parent == "/" {
-		return true
-	}
-	paths := strings.Split(parent, "/")
-	return CheckFile(paths[len(paths)-1], "/"+strings.Join(paths[1:len(paths)-1], "/"))
-}
-
 //CheckFile 检查文件是否已存在
-func CheckFile(name, parent string) bool {
+func CheckFile(fileName string) bool {
 	var count int
-	db.Where("parent = ? and name = ?", parent, name).First(&model.File{}).Count(&count)
+	db.Where("fullname = ?", fileName).First(&model.File{}).Count(&count)
 	return count != 0
 }
 
