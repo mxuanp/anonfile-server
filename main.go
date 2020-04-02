@@ -178,15 +178,20 @@ func main() {
 	router.GET("/api/file/exist/*fileName", func(c *gin.Context) {
 		fileName := c.Param("fileName")
 
+		log.Println(fileName)
+
 		message := "false"
 
+		var file model.File
 		if CheckFile(fileName) {
 			message = "true"
+			db.Where("fullname = ?", fileName).First(&file)
 		}
 
 		c.JSON(200, gin.H{
 			"status":  "2002",
 			"message": message,
+			"data":    []model.File{file},
 		})
 	})
 
